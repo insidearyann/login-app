@@ -1,0 +1,46 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Java
+      uses: actions/setup-java@v3
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Build with Maven
+      run: mvn clean package
+
+    - name: Build Docker image
+      run: docker build -t insidearyann/login .
+
+    - name: Login to DockerHub
+      run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+    - name: Push Docker image
+      run: |
+        docker tag insidearyann/login insidearyann/login:latest
+        docker push insidearyann/login:latest
+
+    - name: Deploy to EC2
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ubuntu
+        key: ${{ secrets.EC2_KEY }}
+        script: |
+          docker pull insidearyann/login:latest
+          docker stop login-app || true
+          docker rm login-app || true
+          docker run -d -p 8083:8083 --name login-app insidearyann/login
